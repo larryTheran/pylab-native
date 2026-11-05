@@ -2,6 +2,8 @@
 
 ## 0.7.3 — Live plots
 
+- Split project-tab view expressions into helpers for compatibility with the hosted macOS 26 Swift compiler; runtime behavior and app version remain unchanged.
+
 - Handle Jupyter display IDs and replacement updates, including cross-cell and late linked updates.
 - Keep one latest frame shared by inline and already-open figures; preserve figure size and zoom.
 - Preserve MIME data/metadata and expression counts; detach unsupported images and reset live links across kernel changes.

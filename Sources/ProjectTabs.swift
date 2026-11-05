@@ -77,51 +77,7 @@ struct ProjectTabsHost: View {
                     GlassEffectContainer(spacing: 4) {
                     HStack(spacing: 5) {
                         ForEach(projects) { project in
-                            HStack(spacing: 5) {
-                                Button {
-                                    NSApp.keyWindow?.makeFirstResponder(nil)
-                                    selectedID = project.id
-                                    persistSession()
-                                } label: {
-                                    HStack(spacing: 6) {
-                                        if let phase = project.executionPhase { ExecutionIndicator(phase: phase, compact: true) }
-                                        else { Image(systemName: "folder.fill").font(.caption) }
-                                        Text(project.title).lineLimit(1).frame(maxWidth: 140)
-                                        if project.dirty { Circle().frame(width: 5, height: 5).help("Unsaved notebook changes") }
-                                    }
-                                    .padding(.leading, 10).padding(.vertical, 7)
-                                }.buttonStyle(.plain)
-                                    .accessibilityValue(project.executionPhase.map(ExecutionIndicator.label(for:)) ?? "Idle")
-                                if projects.count > 1 {
-                                    Button { closeProject(project.id) } label: {
-                                        Image(systemName: "xmark").font(.system(size: 9, weight: .semibold)).padding(6)
-                                    }.buttonStyle(.plain).help("Close project")
-                                        .accessibilityLabel("Close project \(project.title)")
-                                }
-                            }
-                            .padding(.trailing, 4)
-                            .background {
-                                if selectedID == project.id {
-                                    if reduceMotion {
-                                        RoundedRectangle(cornerRadius: 10).fill(Color.accentColor.opacity(0.18))
-                                    } else {
-                                        RoundedRectangle(cornerRadius: 10).fill(Color.accentColor.opacity(0.18))
-                                            .matchedGeometryEffect(id: "selected-project", in: projectSelectionNamespace)
-                                    }
-                                }
-                            }
-                            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 10))
-                            .glassEffectID(project.id, in: projectGlassNamespace)
-                            .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(selectedID == project.id ? Color.accentColor.opacity(0.5) : Color.clear, lineWidth: 0.8))
-                            .magneticDropFeedback(isTargeted: projectDragState.targetID == project.id, cornerRadius: 10)
-                            .onDrag { projectDragState.provider(id: project.id) }
-                            .onDrop(of: [tabDragType], delegate: TabReorderDrop(state: projectDragState,
-                                target: project.id, reduceMotion: reduceMotion, move: moveProject))
-                            .contextMenu {
-                                Button("Move Project Left") { stepProject(project.id, by: -1) }
-                                Button("Move Project Right") { stepProject(project.id, by: 1) }
-                            }
-                            .help("Drag to reorder · " + project.folder.path)
+                            projectTab(project)
                         }
                     }
                     .animation(reduceMotion ? nil : LiquidMotion.transition(reduceMotion: false), value: selectedID)
@@ -217,6 +173,68 @@ struct ProjectTabsHost: View {
                 } label: { Label("More", systemImage: "ellipsis") }
             }
         }
+    }
+
+    // Keep each tab expression small enough for older supported Swift toolchains.
+    // State, IDs and project workbenches stay owned by ProjectTabsHost.
+    private func projectTab(_ project: ProjectTab) -> some View {
+        projectTabContent(project)
+            .padding(.trailing, 4)
+            .background { projectSelectionBackground(project) }
+            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 10))
+            .glassEffectID(project.id, in: projectGlassNamespace)
+            .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(selectedID == project.id ? Color.accentColor.opacity(0.5) : Color.clear, lineWidth: 0.8))
+            .magneticDropFeedback(isTargeted: projectDragState.targetID == project.id, cornerRadius: 10)
+            .onDrag { projectDragState.provider(id: project.id) }
+            .onDrop(of: [tabDragType], delegate: TabReorderDrop(state: projectDragState,
+                target: project.id, reduceMotion: reduceMotion, move: moveProject))
+            .contextMenu { projectTabMenu(project) }
+            .help("Drag to reorder · " + project.folder.path)
+    }
+
+    private func projectTabContent(_ project: ProjectTab) -> some View {
+        HStack(spacing: 5) {
+            projectSelectionButton(project)
+            if projects.count > 1 {
+                Button { closeProject(project.id) } label: {
+                    Image(systemName: "xmark").font(.system(size: 9, weight: .semibold)).padding(6)
+                }.buttonStyle(.plain).help("Close project")
+                    .accessibilityLabel("Close project \(project.title)")
+            }
+        }
+    }
+
+    private func projectSelectionButton(_ project: ProjectTab) -> some View {
+        Button {
+            NSApp.keyWindow?.makeFirstResponder(nil)
+            selectedID = project.id
+            persistSession()
+        } label: {
+            HStack(spacing: 6) {
+                if let phase = project.executionPhase { ExecutionIndicator(phase: phase, compact: true) }
+                else { Image(systemName: "folder.fill").font(.caption) }
+                Text(project.title).lineLimit(1).frame(maxWidth: 140)
+                if project.dirty { Circle().frame(width: 5, height: 5).help("Unsaved notebook changes") }
+            }
+            .padding(.leading, 10).padding(.vertical, 7)
+        }.buttonStyle(.plain)
+            .accessibilityValue(project.executionPhase.map(ExecutionIndicator.label(for:)) ?? "Idle")
+    }
+
+    @ViewBuilder private func projectSelectionBackground(_ project: ProjectTab) -> some View {
+        if selectedID == project.id {
+            if reduceMotion {
+                RoundedRectangle(cornerRadius: 10).fill(Color.accentColor.opacity(0.18))
+            } else {
+                RoundedRectangle(cornerRadius: 10).fill(Color.accentColor.opacity(0.18))
+                    .matchedGeometryEffect(id: "selected-project", in: projectSelectionNamespace)
+            }
+        }
+    }
+
+    @ViewBuilder private func projectTabMenu(_ project: ProjectTab) -> some View {
+        Button("Move Project Left") { stepProject(project.id, by: -1) }
+        Button("Move Project Right") { stepProject(project.id, by: 1) }
     }
 
     private func dispatchPaletteAction() {
