@@ -1,0 +1,29 @@
+# Build and package outputs
+.build/
+build/
+dist/
+package/
+*.app/
+*.zip
+*.dmg
+# Local Python and test state
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.cache/
+.ipynb_checkpoints/
+# Machine-specific settings and credentials
+.DS_Store
+*.xcuserstate
+xcuserdata/
+.env
+.env.*
+!.env.example
+*.p12
+*.p8
+*.mobileprovision
+*.provisionprofile
+# Local scratch outputs
+*.log
