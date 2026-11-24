@@ -526,9 +526,12 @@ def iopub():
         if kind == 'execute_input':
             emit(type='execute_input', id=ident, count=content.get('execution_count'))
         elif kind == 'stream':
-            emit(type='stream', id=ident, text=content.get('text',''))
+            emit(type='stream', id=ident, name=content.get('name', 'stdout'), text=content.get('text', ''))
         elif kind == 'error':
-            emit(type='error', id=ident, text='\n'.join(content.get('traceback',[])))
+            name, value = content.get('ename', 'Error'), content.get('evalue', '')
+            trace = content.get('traceback', [])
+            emit(type='error', id=ident, ename=name, evalue=value, traceback=trace,
+                 text='\n'.join(trace) or (f'{name}: {value}' if value else name))
         elif kind in ('display_data','execute_result','update_display_data'):
             emit_display(ident, content, update=(kind == 'update_display_data'),
                          count=content.get('execution_count') if kind == 'execute_result' else None)

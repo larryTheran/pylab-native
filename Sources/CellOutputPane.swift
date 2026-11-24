@@ -92,7 +92,10 @@ private struct CellOutputItemView: View {
             }
             if kind == "error" {
                 let trace = (output["traceback"] as? [String] ?? []).joined(separator: "\n")
-                return trace.replacingOccurrences(of: "\u{001B}\\[[0-9;]*m", with: "", options: .regularExpression)
+                let summary = [output["ename"] as? String, output["evalue"] as? String]
+                    .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ": ")
+                return (trace.isEmpty ? summary : trace)
+                    .replacingOccurrences(of: "\u{001B}\\[[0-9;]*[A-Za-z]", with: "", options: .regularExpression)
             }
             return NotebookStore.text(data["text/plain"])
         }()

@@ -85,6 +85,8 @@ struct Workbench: View {
     @State private var showNotebookSearch = false
     @State private var pendingSearchResult: NotebookSearchResult?
     @State private var nextFigureNumber = 1
+    @State private var consoleDisplayPlaceholders: [String] = []
+    private static let figureLimit = 50
     @State private var isWorkbenchVisible = false
     @State private var didRestoreNotebooks = false
     @State private var unavailableNotebookPaths: [String] = []
@@ -623,7 +625,7 @@ struct Workbench: View {
                 .accessibilityLabel("Figures (\(figures.count))")
             Button { showHistory.toggle() } label: { Image(systemName: "clock.arrow.circlepath") }
                 .help("Command history").accessibilityLabel("Command history")
-            Button { console = "" } label: { Image(systemName: "trash") }
+            Button { console = ""; consoleDisplayPlaceholders.removeAll() } label: { Image(systemName: "trash") }
                 .help("Clear console display").accessibilityLabel("Clear console display")
         }.buttonStyle(.plain).font(.caption).fixedSize()
     }
@@ -709,13 +711,19 @@ struct Workbench: View {
         figures.first(where: { $0.liveFigure?.displayID == displayID })?.liveFigure
             ?? notebooks.tabs.lazy.compactMap { $0.store.displayFigures[displayID] }.first
     }
-    private func retainFigure(_ image: String, label: String, displayID: String? = nil, liveFigure: LiveFigure? = nil) {
-        guard let data = Data(base64Encoded: image), NSImage(data: data) != nil else { return }
+    @discardableResult private func retainFigure(_ image: String, label: String, displayID: String? = nil, liveFigure: LiveFigure? = nil) -> Bool {
+        guard let data = Data(base64Encoded: image, options: .ignoreUnknownCharacters) else { return false }
         if let displayID, let existing = figures.first(where: { $0.liveFigure?.displayID == displayID })?.liveFigure {
-            _ = existing.update(data: data)
-            return
+            return existing.update(data: data)
         }
         let live = liveFigure ?? displayID.flatMap { LiveFigure(displayID: $0, data: data) }
+        if let live {
+            guard live.update(data: data) else { return false }
+        } else if NSImage(data: data) == nil { return false }
+        addDisplayFigure(label: label, data: data, live: live)
+        return true
+    }
+    private func addDisplayFigure(label: String, data: Data, live: LiveFigure?) {
         appendFigure(VariablePlot(name: label + " · Figure " + String(nextFigureNumber), data: data, liveFigure: live))
         nextFigureNumber += 1
     }
@@ -726,17 +734,20 @@ struct Workbench: View {
         if let count = event.count { output["execution_count"] = count }
         return output
     }
-    private func updateLiveDisplay(_ displayID: String, output: [String: Any]) {
-        for tab in notebooks.tabs { tab.store.updateDisplayOutput(displayID: displayID, output: output) }
-        let bundle = output["data"] as? [String: Any] ?? [:]
-        let encoded = NotebookStore.text(bundle["image/png"])
-        for figure in figures where figure.liveFigure?.displayID == displayID {
-            if !encoded.isEmpty, let data = Data(base64Encoded: encoded, options: .ignoreUnknownCharacters) {
-                _ = figure.liveFigure?.update(data: data)
-            } else { figure.liveFigure?.markSnapshot() }
+    private func updateLiveDisplay(_ displayID: String, output: [String: Any], announceConsoleFigure: Bool = true) {
+        let galleryFigure = figures.first(where: { $0.liveFigure?.displayID == displayID })?.liveFigure
+        let fromConsole = consoleDisplayPlaceholders.contains(displayID)
+        NotebookStore.updateDisplayOutputs(displayID: displayID, output: output, stores: notebooks.tabs.map(\.store),
+            galleryFigure: galleryFigure, consolePlaceholder: fromConsole) { label, frame in
+            addDisplayFigure(label: label, data: frame.data, live: frame)
+            if fromConsole {
+                consoleDisplayPlaceholders.removeAll { $0 == displayID }
+                if announceConsoleFigure { console += "[Figure available in Figures (" + String(figures.count) + ").]\n" }
+            }
         }
     }
     private func detachLiveDisplays() {
+        consoleDisplayPlaceholders.removeAll()
         for tab in notebooks.tabs {
             for figure in tab.store.displayFigures.values { figure.markSnapshot() }
             tab.store.resetLiveDisplays()
@@ -752,7 +763,7 @@ struct Workbench: View {
 
     private func appendFigure(_ figure: VariablePlot) {
         figures.append(figure)
-        if figures.count > 50 { figures.removeFirst(figures.count - 50) }
+        if figures.count > Self.figureLimit { figures.removeFirst(figures.count - Self.figureLimit) }
     }
 
     func runCommand() {
@@ -960,12 +971,19 @@ struct Workbench: View {
         }
         if consoleIDs.contains(id) {
             if let output = displayOutput(for: event), let displayID = event.displayID {
-                updateLiveDisplay(displayID, output: output)
+                updateLiveDisplay(displayID, output: output, announceConsoleFigure: false)
+                // Keep a bounded set of console placeholders for late image updates.
+                if event.image == nil && liveFigure(for: displayID) == nil {
+                    consoleDisplayPlaceholders.removeAll { $0 == displayID }
+                    consoleDisplayPlaceholders.append(displayID)
+                    if consoleDisplayPlaceholders.count > Self.figureLimit { consoleDisplayPlaceholders.removeFirst() }
+                }
             }
             if let image = event.image {
                 let existing = event.displayID.flatMap { liveFigure(for: $0) }
-                retainFigure(image, label: "Console", displayID: event.displayID, liveFigure: existing)
-                console += "[Figure available in Figures (" + String(figures.count) + ").]\n"
+                if retainFigure(image, label: "Console", displayID: event.displayID, liveFigure: existing) {
+                    console += "[Figure available in Figures (" + String(figures.count) + ").]\n"
+                }
             } else if let text = event.text { console += text + (text.hasSuffix("\n") ? "" : "\n") }
             return
         }
@@ -991,8 +1009,8 @@ struct Workbench: View {
                 retainFigure(image, label: target.cells.first(where: { $0.id == cellID })?.name ?? "Notebook",
                     displayID: event.displayID, liveFigure: live)
             }
-        } else if let text = outputText, !text.isEmpty {
-            target.appendOutput(cellID, output: ["output_type": "stream", "name": event.type == "error" ? "stderr" : "stdout", "text": text])
+        } else if let output = event.notebookTextOutput {
+            target.appendOutput(cellID, output: output)
         }
     }
     func restartKernel() {

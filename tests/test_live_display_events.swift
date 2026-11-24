@@ -97,9 +97,24 @@ import Darwin
         wait({ finished("expression") }, "Expression result did not finish")
         noError("expression")
         precondition(events.contains { $0.id == "expression" && $0.type == "result" && $0.text == "4" && $0.count != nil && !$0.isDisplayUpdate })
-        kernel.execute(code: "live.update('before error'); raise RuntimeError('live fixture')", id: "error")
+        kernel.execute(code: """
+        import sys
+        print('simulation started', flush=True)
+        print('mesh warning', file=sys.stderr, flush=True)
+        live.update('before error')
+        raise RuntimeError('live fixture')
+        """, id: "error")
         wait({ finished("error") }, "Error left execution pending")
-        precondition(events.contains { $0.id == "error" && $0.isDisplayUpdate } && events.contains { $0.id == "error" && $0.type == "error" })
+        let diagnosticEvents = events.filter { $0.id == "error" }
+        precondition(diagnosticEvents.contains { $0.isDisplayUpdate })
+        let outputs = diagnosticEvents.compactMap(\.notebookTextOutput)
+        precondition(outputs.contains { $0["name"] as? String == "stdout" && $0["text"] as? String == "simulation started\n" })
+        precondition(outputs.contains { $0["name"] as? String == "stderr" && $0["text"] as? String == "mesh warning\n" })
+        let exception = outputs.first { $0["output_type"] as? String == "error" }
+        precondition(exception?["ename"] as? String == "RuntimeError" && exception?["evalue"] as? String == "live fixture")
+        precondition((exception?["traceback"] as? [String])?.last?.contains("live fixture") == true)
+        let bridgeFailure = KernelEvent(id: nil, type: "error", text: "Bridge stopped", image: nil, count: nil, wait: nil)
+        precondition(bridgeFailure.notebookTextOutput?["name"] as? String == "stderr")
         kernel.execute(code: "live.update('before interrupt'); time.sleep(30)", id: "interrupt")
         wait({ events.contains { $0.id == "interrupt" && $0.isDisplayUpdate } }, "Interrupted run produced no frame")
         kernel.interrupt()

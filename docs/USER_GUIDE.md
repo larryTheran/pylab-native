@@ -42,6 +42,10 @@ Deleting a cell or notebook does not erase its Python variables; restart or expl
 
 ## Figures and code space
 
+Warnings written to standard error appear in red. If a cell raises an exception,
+the saved notebook includes its Python type, message and traceback. Use **Go to
+line** when the traceback identifies a line in the cell.
+
 Cell Tabs allocates about 68% of usable cell content to code initially. A bounded output area prevents an image or long log from taking over the editor. Drag the code/output separator, use its menu presets or collapse outputs; complete saved output is retained. All Cells also bounds output height.
 
 Choose Open Figure or double-click a preview for fit/zoom/export, or use Figures to revisit up to 50 recent project previews. A code-generated figure is a PNG with image-PDF export. Supported workspace plots can be regenerated from current data with title/axis/limit/legend controls and vector PDF/SVG export. Exporting a live figure saves the latest received frame.

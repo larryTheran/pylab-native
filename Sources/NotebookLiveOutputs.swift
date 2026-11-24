@@ -54,9 +54,50 @@ extension NotebookStore {
         return frame
     }
 
-    /// Unknown update IDs do not create an output. Existing display instances
-    /// replace their MIME bundle, retaining slot identity and execution count.
+    /// Fan out a kernel update once. A text placeholder can become an image in
+    /// several notebooks at once, all of which must observe the same frame.
+    @discardableResult static func updateDisplayOutputs(
+        displayID: String, output: [String: Any], stores: [NotebookStore],
+        galleryFigure: LiveFigure? = nil, consolePlaceholder: Bool = false,
+        onFirstImage: (String, LiveFigure) -> Void = { _, _ in }
+    ) -> Int {
+        var updated = 0
+        var recipients: [NotebookStore] = []
+        for store in stores {
+            let count = store.replaceDisplaySlots(displayID: displayID, output: output)
+            if count > 0 { recipients.append(store); updated += count }
+        }
+        guard !recipients.isEmpty || galleryFigure != nil || consolePlaceholder else { return 0 }
+        let existing = galleryFigure ?? recipients.lazy.compactMap { $0.displayFigures[displayID] }.first
+        guard let data = figureData(in: output) else {
+            existing?.markSnapshot()
+            return updated
+        }
+        let frame: LiveFigure
+        if let existing {
+            guard existing.update(data: data) else { return updated }
+            frame = existing
+        } else {
+            guard let first = LiveFigure(displayID: displayID, data: data) else { return updated }
+            frame = first
+        }
+        for store in recipients { store.displayFigures[displayID] = frame }
+        if existing == nil {
+            let source = recipients.first.flatMap { store in
+                let cellID = store.displayOutputTargets[displayID]?.first?.cellID
+                return store.cells.first(where: { $0.id == cellID })?.name
+            }
+            onFirstImage(source ?? "Console", frame)
+        }
+        return updated
+    }
+
     @discardableResult func updateDisplayOutput(displayID: String, output: [String: Any]) -> Int {
+        Self.updateDisplayOutputs(displayID: displayID, output: output, stores: [self])
+    }
+
+    /// Replace the MIME bundle while retaining output type and execution count.
+    private func replaceDisplaySlots(displayID: String, output: [String: Any]) -> Int {
         guard let targets = displayOutputTargets[displayID] else { return 0 }
         var updated = 0
         var valid: [NotebookDisplayTarget] = []
@@ -71,13 +112,8 @@ extension NotebookStore {
             updated += 1
         }
         displayOutputTargets[displayID] = valid.isEmpty ? nil : valid
-        if updated > 0 {
-            if let data = Self.figureData(in: output) {
-                if let frame = displayFigures[displayID] { _ = frame.update(data: data) }
-                else { displayFigures[displayID] = LiveFigure(displayID: displayID, data: data) }
-            } else { displayFigures[displayID]?.markSnapshot() }
-            isDirty = true
-        }
+        if updated > 0 { isDirty = true }
+        else { displayFigures[displayID] = nil }
         return updated
     }
 
@@ -85,7 +121,7 @@ extension NotebookStore {
         guard let cell = cells.first(where: { $0.id == cellID }) else { return [:] }
         var result: [Int: LiveFigure] = [:]
         for (displayID, targets) in displayOutputTargets {
-            guard let frame = displayFigures[displayID] else { continue }
+            guard let frame = displayFigures[displayID], frame.isLive else { continue }
             for target in targets where target.cellID == cellID && cell.outputs.indices.contains(target.outputIndex) {
                 // A later text/HTML-only update must remove the old PNG preview.
                 let bundle = cell.outputs[target.outputIndex]["data"] as? [String: Any] ?? [:]

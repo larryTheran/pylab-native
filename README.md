@@ -28,6 +28,10 @@ A native scientific Python desktop workbench with a MATLAB-style layout and Jupy
 
 ## Install or build
 
+For the latest changes on `main`, sign in to GitHub, open a successful
+**Checks** run, and download `PyLabNative-macos-arm64.zip` from its artifacts.
+[Browse development builds](https://github.com/larryTheran/pylab-native/actions/workflows/ci.yml?query=branch%3Amain).
+
 Download the [v0.7.3 macOS arm64 development ZIP](https://github.com/larryTheran/pylab-native/releases/download/v0.7.3/PyLabNative-0.7.3-macos-arm64.zip) and verify it against `SHA256SUMS` on the [release page](https://github.com/larryTheran/pylab-native/releases/tag/v0.7.3), or build from source:
 
 ```sh
@@ -72,7 +76,7 @@ scripts/       App build and focused test entry points
 tests/         Swift model/native checks and Python/Jupyter regressions
 docs/          Setup, user guide, architecture, development and packaging
 .github/       Public-repository CI and issue templates
-Info.plist     App identity, macOS requirement and version 0.7.3 (12)
+Info.plist     App identity, macOS requirement and build number
 Package.swift  Swift package for Xcode/source development
 ```
 

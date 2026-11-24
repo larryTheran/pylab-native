@@ -12,14 +12,27 @@ struct KernelEvent {
     let isDisplayUpdate: Bool
     let displayData: [String: Any]?
     let displayMetadata: [String: Any]?
+    let notebookTextOutput: [String: Any]?
 
     init(id: String?, type: String, text: String?, image: String?, count: Int?, wait: Bool?,
          displayID: String? = nil, isDisplayUpdate: Bool = false,
-         displayData: [String: Any]? = nil, displayMetadata: [String: Any]? = nil) {
+         displayData: [String: Any]? = nil, displayMetadata: [String: Any]? = nil,
+         streamName: String? = nil, errorName: String? = nil, errorValue: String? = nil,
+         traceback: [String]? = nil) {
         self.id = id; self.type = type; self.text = text; self.image = image
         self.count = count; self.wait = wait
         self.displayID = displayID.flatMap { !$0.isEmpty && $0.utf8.count <= 4096 ? $0 : nil }
         self.isDisplayUpdate = isDisplayUpdate
+        if type == "error", let errorName {
+            self.notebookTextOutput = ["output_type": "error", "ename": errorName,
+                                       "evalue": errorValue ?? "", "traceback": traceback ?? []]
+        } else if let text, !text.isEmpty, type == "stream" || type == "error" {
+            // Controller and legacy bridge errors have no Python traceback.
+            let channel = type == "error" || streamName == "stderr" ? "stderr" : "stdout"
+            self.notebookTextOutput = ["output_type": "stream", "name": channel, "text": text]
+        } else {
+            self.notebookTextOutput = nil
+        }
         if ["image", "result", "display"].contains(type) {
             var bundle = displayData ?? [:]
             if let image { bundle["image/png"] = image }
@@ -636,7 +649,10 @@ final class KernelController: ObservableObject {
                                         displayID: raw["display_id"] as? String,
                                         isDisplayUpdate: raw["update"] as? Bool ?? false,
                                         displayData: raw["data"] as? [String: Any],
-                                        displayMetadata: raw["metadata"] as? [String: Any])
+                                        displayMetadata: raw["metadata"] as? [String: Any],
+                                        streamName: raw["name"] as? String,
+                                        errorName: raw["ename"] as? String, errorValue: raw["evalue"] as? String,
+                                        traceback: raw["traceback"] as? [String])
                 if type == "status" {
                     if event.text == "busy" { updateExecution(event.id, phase: .running) }
                     state = event.text == "busy" ? "Busy" : "Ready"

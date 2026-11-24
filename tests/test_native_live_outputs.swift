@@ -21,6 +21,7 @@ import AppKit
         func output(_ data: Data) -> [String: Any] {
             ["output_type": "display_data", "data": ["image/png": data.base64EncodedString()], "metadata": ["probe": "latest"]]
         }
+        checkTextFirstDisplays(first: output(first), next: output(last), latestBytes: last)
         let store = NotebookStore()
         let source = "def example():\n    return 42\n\nprint(example())"
         store.cells = [NotebookCell(id: "code", name: "Live FDTD", source: source), NotebookCell(id: "other", name: "Other")]
@@ -117,4 +118,50 @@ import AppKit
         store.newNotebook(); precondition(store.displayOutputTargets.isEmpty && store.displayFigures.isEmpty)
         print("PASS: live output replacement/cross-store IDs, unsupported MIME reset, latest-frame-only state, stable full-figure size, editor focus/source/Undo/code space, PNG persistence and transient cleanup")
     }
+    @MainActor private static func checkTextFirstDisplays(first: [String: Any], next: [String: Any], latestBytes: Data) {
+        let stores = [NotebookStore(), NotebookStore()]
+        let id = "pending-plot"
+        let text: [String: Any] = ["output_type": "display_data", "data": ["text/plain": "Computing"]]
+        for store in stores {
+            let cell = store.cells[0]
+            precondition(store.appendDisplayOutput(cell.id, output: text, displayID: id) == nil)
+        }
+
+        var added: [LiveFigure] = []
+        func update(_ output: [String: Any], displayID: String = id, consolePlaceholder: Bool = false) {
+            NotebookStore.updateDisplayOutputs(displayID: displayID, output: output, stores: stores,
+                galleryFigure: added.first(where: { $0.displayID == displayID }), consolePlaceholder: consolePlaceholder) { label, figure in
+                precondition(label == (consolePlaceholder ? "Console" : stores[0].cells[0].name))
+                added.append(figure)
+            }
+        }
+        update(first)
+        precondition(added.count == 1, "The first image from a placeholder must enter Figures once")
+        let frame = added[0]
+        for store in stores {
+            precondition(store.displayFigures[id] === frame && store.cells[0].outputs.count == 1)
+        }
+        update(next)
+        precondition(added.count == 1 && frame.data == latestBytes)
+        let invalid = ["data": ["image/png": "bm90IGEgcG5n", "text/plain": "No image available"]]
+        update(invalid)
+        precondition(!frame.isLive && frame.data == latestBytes)
+        precondition(stores.allSatisfy { $0.liveFigures(for: $0.cells[0].id).isEmpty })
+        update(text)
+        update(first)
+        precondition(frame.isLive && added.count == 1)
+
+        added.removeAll() // The user closed the gallery tab. Inline updates continue.
+        update(next)
+        precondition(added.isEmpty && frame.data == latestBytes)
+        for store in stores { store.clearDisplayOutputs(store.cells[0].id) }
+        update(first)
+        update(first, displayID: "unregistered")
+        precondition(added.isEmpty)
+        update(first, displayID: "console-plot", consolePlaceholder: true)
+        update(next, displayID: "console-plot")
+        precondition(added.count == 1 && added[0].data == latestBytes)
+        print("PASS: text-first notebook and console plots, cross-notebook sharing, invalid PNG fallback, gallery close and cleared targets")
+    }
+
 }

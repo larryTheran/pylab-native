@@ -55,7 +55,7 @@ The optional `test_fdtd_live_pipeline.swift` additionally needs the native noteb
 
 ## CI
 
-The Python workflow runs focused protocol/data validation on Ubuntu with Python 3.12. The native workflow uses the standard arm64 `macos-26` runner, checks the SDK, builds the development app and runs focused model checks. Native rendering tests are a separate manual local step because they depend on AppKit/WindowServer behavior and should retain visual review.
+The Python workflow runs protocol, data and real-kernel tests on Ubuntu with Python 3.12. The native workflow builds the Apple Silicon app on `macos-26`, runs model checks, verifies the app signature and uploads a zipped build. Run native rendering checks locally for visual review.
 
 Runner availability was checked against GitHub's [hosted runner reference](https://docs.github.com/en/actions/reference/runners/github-hosted-runners) and [runner-image list](https://github.com/actions/runner-images). A future runner/SDK change should be assessed rather than treating `macos-latest` as a fixed toolchain. CI configuration is prepared here; the historical [validation record](../VALIDATION.md) describes local development checks, not a claim that GitHub CI has already run.
 

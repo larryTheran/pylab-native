@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Preserve Python exceptions and their tracebacks as Jupyter notebook errors. Warnings written to standard error keep their own output channel when saved and reopened.
+- Show the first image from a text placeholder in Figures. Later updates reuse the same figure across linked notebooks.
+- Offer the checked Apple Silicon app as a download from each successful main-branch build.
+
 ## 0.7.3 — Live plots
 
 - Split project-tab view expressions into helpers for compatibility with the hosted macOS 26 Swift compiler; runtime behavior and app version remain unchanged.
